@@ -1,0 +1,14 @@
+# PyCharm / JetBrains
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Virtual environment
+.venv/
+
+# Data files
+*.db
+*.csv
+*.txt
+*.png
