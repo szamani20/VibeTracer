@@ -17,7 +17,10 @@ setuptools.setup(
     ),
     install_requires=[
         "sqlmodel>=0.0.24",
-        "SQLAlchemy>=2.0.41"
+        "SQLAlchemy>=2.0.41",
+        "matplotlib>=3.10.3",
+        "matplotlib>=2.3.0",
+        "networkx>=3.5",
     ],
     classifiers=[
         "Programming Language :: Python :: 3",
