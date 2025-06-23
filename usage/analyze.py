@@ -1,7 +1,7 @@
 from pathlib import Path
 import pandas as pd
 
-from analysis.analyzer import RunAnalysis
+from vibetracer.analysis.analyzer import RunAnalysis
 
 pd.set_option('display.max_rows', 500)
 pd.set_option('display.max_columns', 500)

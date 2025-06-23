@@ -13,7 +13,7 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/szamani20/VibeTracer",
     packages=setuptools.find_packages(
-        include=["analysis*", "database*", "trace*"]
+        include=["vibetracer*"]
     ),
     install_requires=[
         "sqlmodel>=0.0.24",

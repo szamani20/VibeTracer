@@ -6,7 +6,7 @@ import json
 from functools import wraps
 from sqlmodel import Session, select
 
-from database.models import Function, Call, Argument
+from vibetracer.database.models import Function, Call, Argument
 
 # Thread-local storage for nested call tracking
 _call_stack = threading.local()

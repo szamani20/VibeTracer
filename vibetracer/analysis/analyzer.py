@@ -7,8 +7,8 @@ import matplotlib.pyplot as plt
 import networkx as nx
 from sqlmodel import create_engine, Session, select
 
-from analysis.config import ANALYSIS_DIRECTORY
-from database.models import Function, Call, Argument
+from vibetracer.analysis.config import ANALYSIS_DIRECTORY
+from vibetracer.database.models import Function, Call, Argument
 
 
 class RunAnalysis:
