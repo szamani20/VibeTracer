@@ -7,16 +7,18 @@ from functools import wraps
 from sqlmodel import Session, select
 
 from vibetracer.database.models import Function, Call, Argument
+from vibetracer.database.sqlite_db import get_engine
 
 # Thread-local storage for nested call tracking
 _call_stack = threading.local()
 
 
-def info_decorator(engine):
+def info_decorator():
     """
     Decorator factory to trace function calls, record metadata, arguments,
     timing, return values, and exceptions into the database.
     """
+    engine = get_engine()
 
     def decorator(func):
         # Persist function metadata at decoration time
