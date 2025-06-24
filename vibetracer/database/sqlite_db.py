@@ -1,14 +1,16 @@
 import os
 from datetime import datetime
+from functools import lru_cache
+
 from sqlmodel import SQLModel, create_engine
+from vibetracer.database.config import DB_DIRECTORY
 
-from .config import DB_DIRECTORY
 
-
-def build_engine():
+@lru_cache(maxsize=1)
+def get_engine():
     """
-    Ensure the database directory exists, create a timestamped SQLite engine,
-    and initialize all SQLModel metadata.
+    Ensure the database directory exists, lazily create a timestamped SQLite engine,
+    and initialize all SQLModel metadata. Cache it for all future calls.
     Returns:
         engine: SQLAlchemy engine connected to the new SQLite database.
     """
