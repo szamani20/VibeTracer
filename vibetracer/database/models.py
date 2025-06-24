@@ -15,6 +15,7 @@ class Function(SQLModel, table=True):
     defaults: Optional[str] = None
     kwdefaults: Optional[str] = None
     closure_vars: Optional[str] = None
+    source_code: Optional[str] = None
 
     calls: List["Call"] = Relationship(back_populates="function")
 

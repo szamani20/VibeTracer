@@ -25,6 +25,8 @@ def info_decorator():
         sig = inspect.signature(func)
         code_obj = func.__code__
 
+        source = inspect.getsource(func)
+
         annotations_json = json.dumps(func.__annotations__, default=str)
         defaults_json = (
             json.dumps(func.__defaults__, default=str)
@@ -64,7 +66,8 @@ def info_decorator():
                     annotations=annotations_json,
                     defaults=defaults_json,
                     kwdefaults=kwdefaults_json,
-                    closure_vars=closure_vars_json
+                    closure_vars=closure_vars_json,
+                    source_code=source,
                 )
                 session.add(existing)
                 session.commit()
