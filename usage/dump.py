@@ -1,6 +1,7 @@
 from pathlib import Path
 import pandas as pd
 
+from vibetracer import dump_latest_run_llm_report, dump_llm_report
 from vibetracer.database.dumper import Dumper
 
 pd.set_option('display.max_rows', 500)
@@ -8,7 +9,19 @@ pd.set_option('display.max_columns', 500)
 pd.set_option('display.width', 1000)
 
 
-def main():
+def easy_dump_custom_run():
+    llm_report = dump_llm_report(path='run_dbs/run_20250624_175123.db')
+    print("\n=== Custom Run LLM-Tailored Report ===")
+    print(llm_report)
+
+
+def easy_dump():
+    llm_report = dump_latest_run_llm_report()
+    print("\n=== Latest Run LLM-Tailored Report ===")
+    print(llm_report)
+
+
+def custom_dump():
     # Point to your latest run DB inside run_dbs/
     db_dir = Path("run_dbs")
     # pick the most recent file
@@ -35,4 +48,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    custom_dump()
+    easy_dump()
+    easy_dump_custom_run()
