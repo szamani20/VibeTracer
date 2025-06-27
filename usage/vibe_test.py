@@ -1,4 +1,5 @@
 from vibetracer import info_decorator
+import itertools
 
 
 @info_decorator()
@@ -57,6 +58,14 @@ def factorial(n):
 
 
 @info_decorator()
+def factorial2(n):
+    count = 0
+    for _ in itertools.permutations(range(n)):
+        count += 1
+    return count
+
+
+@info_decorator()
 def make_incrementor(step):
     # Closure example
     def inc(x):
@@ -71,6 +80,7 @@ def use_incrementor(step, value):
     return inc(value)
 
 
+@info_decorator()
 def main():
     print("Orchestrator result:", orchestrator(5, False))
     svc = Service()
@@ -79,6 +89,7 @@ def main():
     except ZeroDivisionError:
         print("Caught error in Service.process")
     print("Factorial(4):", factorial(4))
+    print("Factorial(4):", factorial2(4))
     print("Increment via closure:", use_incrementor(7, 3))
 
 
