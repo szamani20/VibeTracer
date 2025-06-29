@@ -21,6 +21,9 @@ setuptools.setup(
         "matplotlib>=3.10.3",
         "matplotlib>=2.3.0",
         "networkx>=3.5",
+        "openai>=1.93.0",
+        "anthropic>=0.55.0",
+        "google-genai>=1.23.0",
     ],
     classifiers=[
         "Programming Language :: Python :: 3",
