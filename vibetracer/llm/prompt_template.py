@@ -19,7 +19,8 @@ Return your findings in human-friendly raw markdown format. Your report may (but
 contain the following sections:
 `errors`, `security`, `performance`, `runtime`, `architecture`
 You may add new or remove existing sections as you see fit given the report. The goal is to help the devs not to spam
-them with unnecessary information.
+them with unnecessary information. Ignore @info_decorator related issues. Do not report anything about
+the @info_decorator as an issue as this decorator is used to generate the report.
 For each chosen section, provide as much detail as possible without being overly verbose following a concise and
 human-friendly format.
 Include details about your identified issue, why it's important, its potential impact, the current implementation,

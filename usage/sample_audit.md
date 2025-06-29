@@ -1,120 +1,148 @@
 # Audit Report
 
-## 1. Errors & Exceptions
+## Errors & Exceptions
 
-### 1.1 Unhandled ZeroDivisionError in `Service.process`
-**Current implementation**  
-```python
-@info_decorator()
-def process(self, data):
-    # List comprehension with nested decorated calls
-    return [self._transform(x) for x in data]
-```
-- _Issue_: a single bad element (`x == 0`) aborts the entire batch.  
-- _Impact_: caller must wrap every call in `try/except`, scattering error-handling logic.
+- **ZeroDivisionError in `Service.process`**  
+  Current implementation uses a list-comprehension that aborts on the first failure:
+  ```python
+  @info_decorator()
+  def process(self, data):
+      return [self._transform(x) for x in data]
+  ```
+  As soon as `self._transform(0)` raises, the entire call fails.  
+  **Impact:** Upstream code must catch the exception (as in `main`), but you lose all prior results and must re-invoke or recover manually.  
+  **Suggested fix:** catch per‐item errors or pre‐filter zeros. E.g.:
 
-**Suggested implementation**  
-```python
-@info_decorator()
-def process(self, data):
-    results = []
-    for x in data:
-        try:
-            results.append(self._transform(x))
-        except ZeroDivisionError as e:
-            # handle or log the error, then continue
-            logger.warning(f"Skipping invalid input {x}: {e}")
-            results.append(None)
-    return results
-```
-- **Benefit**: isolates failures, returns a full result list with placeholders.
+  ```diff
+  - @info_decorator()
+  - def process(self, data):
+  -     return [self._transform(x) for x in data]
+  + @info_decorator()
+  + def process(self, data):
+  +     results = []
+  +     for x in data:
+  +         try:
+  +             results.append(self._transform(x))
+  +         except ZeroDivisionError:
+  +             # log.warning(f"skipped zero value at {x}")
+  +             continue
+  +     return results
+  ```
 
-### 1.2 Exponential blow-up in `factorial2`
-**Current implementation**  
-```python
-@info_decorator()
-def factorial2(n):
-    count = 0
-    for _ in itertools.permutations(range(n)):
-        count += 1
-    return count
-```
-- _Issue_: generates n! tuples in memory/time. Even moderate `n≥8` becomes impractical.
-- _Impact_: CPU and memory exhaustion, DoS on untrusted inputs.
-
-**Suggested implementation**  
-```python
-import math
-
-@info_decorator()
-def factorial2(n):
-    return math.factorial(n)
-```
-- **Benefit**: O(1) time/space call to C-optimized factorial, no large memory footprint.
+- **`may_fail` raising `ValueError`**  
+  This is caught in `orchestrator`, so behavior is intentional. No change required unless you prefer a custom exception type for clarity.
 
 ---
 
-## 2. Security Issues
+## Security
 
-### 2.1 Denial-of-Service via combinatorial explosion
-- **Location**: `factorial2`, permutations approach.  
-- **Mitigation**: replace with `math.factorial`, validate `n` against a reasonable upper bound.
+- **Unbounded recursion / CPU exhaustion**  
+  - `factorial2(n)` iterates over all `n!` permutations, leading to exponential CPU use. An attacker supplying moderately large `n` can cause a denial-of-service.  
+  - **Mitigation:** replace permutation count with a direct factorial computation (O(1) via library) and/or enforce `n` bounds.
 
-### 2.2 Logging sensitive data
-- **Location**: `@info_decorator()` wraps every function, logging arguments/returns.  
-- **Risk**: accidental logging of PII or secrets.  
-- **Mitigation**:  
-  - Add a decorator parameter to mask or skip sensitive args.  
-  - Integrate with a proper logging framework at appropriate levels (DEBUG vs INFO).
+  ```diff
+  - @info_decorator()
+  - def factorial2(n):
+  -     count = 0
+  -     for _ in itertools.permutations(range(n)):
+  -         count += 1
+  -     return count
+  + import math
+  +
+  + @info_decorator()
+  + def factorial2(n):
+  +     if n < 0 or n > 20:
+  +         raise ValueError("n out of allowed range [0..20]")
+  +     return math.factorial(n)
+  ```
 
----
-
-## 3. Performance Hotspots
-
-### 3.1 Decorator overhead on tight loops
-- **Observation**: each decorator adds ~25 ms.  
-- **Impact**: `nested_operations(5)` issues 11 decorated calls (add/multiply), adding ~250 ms overhead.
-- **Mitigation**:  
-  - Inline simple operations in hot paths.  
-  - Provide an “unwrapped” or optimized version for bulk computations.  
-  - Use `functools.lru_cache` on pure functions (`multiply`, `add`) if repetitive inputs.
-
-### 3.2 Recursive `factorial` overhead
-- **Observation**: decorator on every recursion frame (~4 calls took ~98 ms).  
-- **Mitigation**:  
-  - Implement iterative factorial or use `math.factorial`.  
-  - Remove decorator or switch to a lighter-weight instrumentation on recursion.
+- **Input validation**  
+  - `Service._transform` divides `100 / x` without checking for malicious floats or infinities.  
+  - **Mitigation:** validate type and range before computing.
 
 ---
 
-## 4. Runtime Concerns
+## Performance Hotspots
 
-### 4.1 Memory growth in combinatorial functions
-- **Location**: `factorial2` permutations hold iterators; worst-case memory if consumed.  
-- **Impact**: potential O(n!) memory/CPU consumption.
+1. **Decorator overhead on trivial arithmetic**  
+   - `add` and `multiply` are called 10× in `nested_operations`, each incurring ~25 ms decorator overhead (total ~250 ms of logging overhead).  
+   - **Suggestion:** either remove the decorator from hot‐path utilities or bypass it internally:
 
-### 4.2 Unbounded recursion
-- **Location**: `factorial` for large `n`.  
-- **Impact**: `RecursionError` or stack overflow.  
-- **Mitigation**: use iterative loops or tail-recursion elimination if supported.
+   ```diff
+   - @info_decorator()
+   - def add(a, b):
+   -     return a + b
+   + def add(a, b):
+   +     return a + b
+
+   - @info_decorator()
+   - def multiply(x, y=2):
+   -     return x * y
+   + def multiply(x, y=2):
+   +     return x * y
+   ```
+
+   Or for internal calls only:
+   ```python
+   from vibe_test import add as _add, multiply as _multiply  # un-decorated via __wrapped__
+   ```
+
+2. **`nested_operations` CPU cost**  
+   Entire loop can be collapsed:
+   ```diff
+   - @info_decorator()
+   - def nested_operations(n):
+   -     total = 0
+   -     for i in range(n):
+   -         total = add(total, multiply(i))
+   -     return total
+   + @info_decorator()
+   + def nested_operations(n):
+   +     # sum(i*2 for i in 0..n-1) == n*(n-1)
+   +     return sum(i * 2 for i in range(n))
+   ```
+
+3. **Recursive `factorial`**  
+   - Recursion depth and repeated decorator calls add ~100 ms for `n=4`.  
+   - **Suggestion:** use iterative and built-in math:
+
+   ```diff
+   - @info_decorator()
+   - def factorial(n):
+   -     return 1 if n <= 1 else n * factorial(n - 1)
+   + import math
+   +
+   + @info_decorator()
+   + def factorial(n):
+   +     if n < 0:
+   +         raise ValueError("Negative factorial")
+   +     return math.factorial(n)
+   ```
 
 ---
 
-## 5. Architectural Notes
+## Runtime Concerns
 
-- **Separation of Concerns**:  
-  - Heavy computations (factorials, permutations) should live in a dedicated “utils” module, un-decorated or lightly instrumented.
-  - Business logic (`orchestrator`, `Service`) stays in a higher layer with full tracing.
+- **Deep recursion** in `factorial` risks stack overflow for large `n`.  
+- **Decorator logging** adds ~20–60 ms per call; accumulate in loops. In high-throughput or latency-sensitive paths, disable or switch to sampling.
 
-- **Decorator Configurability**:  
-  - Enhance `info_decorator` to accept flags: `@info_decorator(mask_args=['password'], skip_on_errors=True)`.
-  - Allow per-function instrumentation levels to minimize overhead.
+---
 
-- **Dependency Management**:  
-  - Rely on built-in `math` and `logging` rather than custom tracing in performance-critical sections.
-  - Pin `itertools` and other stdlib versions; no third-party risks here.
+## Architectural Notes
 
-- **Best Practices**:  
-  - Validate all external inputs at API boundaries (e.g., ensure `n >= 0`, `flag` is bool).  
-  - Use type annotations and static analysis (mypy) to catch signature mismatches.  
-  - Establish clear error-handling policies: catch where appropriate, propagate otherwise.
+- **Separation of concerns**  
+  - Keep pure‐math utilities (`add`, `multiply`, `factorial`, `factorial2`) in a separate module without heavy instrumentation.  
+  - Apply `@info_decorator` only at service boundaries or top-level orchestration to reduce noise.
+
+- **Use standard logging vs. print**  
+  Replace `print(...)` in `main` with logging calls to control verbosity in production vs. debug.
+
+- **Input sanitization & bounds checks**  
+  Enforce valid input ranges (e.g., non-negative integers, upper limits) for public API functions to prevent unbounded loops or recursion.
+
+- **Error types**  
+  Consider custom exception classes (e.g., `class TransformationError(Exception)`) for clearer error handling rather than generic `ZeroDivisionError` or `ValueError`.
+
+---
+
+> _Overall, trimming decorator overhead on hot code paths and consolidating math operations into direct or built-in implementations will yield significant performance improvements while improving maintainability and security._
