@@ -15,6 +15,11 @@ setuptools.setup(
     packages=setuptools.find_packages(
         include=["vibetracer*"]
     ),
+    entry_points={
+        'console_scripts': [
+            'vibetracer = vibetracer.command.runner:main',
+        ],
+    },
     install_requires=[
         "sqlmodel>=0.0.24",
         "SQLAlchemy>=2.0.41",
