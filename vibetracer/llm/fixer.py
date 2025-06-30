@@ -5,15 +5,18 @@ from openai import OpenAI
 import anthropic
 from google import genai
 
+
 class Fixer:
     """
     Analyze a tracer report string with an LLM and return a structured audit in markdown format.
     Supports OpenAI, Anthropic Claude, and Google Gemini.
     """
+
     def __init__(self,
-                 provider: Literal["openai","anthropic","google"] = None,
+                 provider: Literal["openai", "anthropic", "google"] = None,
                  temperature: float = 0.2,
                  max_tokens: int = 100000):
+        self._validate_configs()
         self.provider = provider or settings.default_provider
         self.temperature = temperature
         self.max_tokens = max_tokens
@@ -27,6 +30,21 @@ class Fixer:
             self.google_client = genai.Client(api_key=settings.google_api_key)
         else:
             raise ValueError(f"Unsupported provider: {self.provider}")
+
+    @staticmethod
+    def _validate_configs():
+        # Validate
+        _allowed = {"openai", "anthropic", "google"}
+        provider = settings.default_provider
+        if provider not in _allowed:
+            raise ValueError(f"LLM_PROVIDER must be one of {_allowed}; got '{provider}'")
+
+        if provider == "openai" and settings.openai_api_key is None:
+            raise ValueError("Must set OPENAI_API_KEY when LLM_PROVIDER=openai")
+        if provider == "anthropic" and settings.anthropic_api_key is None:
+            raise ValueError("Must set ANTHROPIC_API_KEY when LLM_PROVIDER=anthropic")
+        if provider == "google" and settings.google_api_key is None:
+            raise ValueError("Must set GOOGLE_API_KEY when LLM_PROVIDER=google")
 
     def analyze(self, report: str) -> str:
         """
