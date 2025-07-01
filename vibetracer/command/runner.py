@@ -61,26 +61,28 @@ class VibeLoader(importlib.abc.Loader):
 
 class VibeFinder(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path, target=None):
-        # Ask only the filesystem PathFinder to avoid recursion
-        spec = PathFinder.find_spec(fullname, path, target)
-        if (
-                not spec or
-                not spec.origin or
-                not spec.origin.endswith('.py')
-        ):
+        # 1) Check if this fullname maps to a .py or package __init__.py under PROJECT_ROOT
+        parts = fullname.split('.')
+        pkg_init = os.path.join(PROJECT_ROOT, *parts, "__init__.py")
+        mod_file = os.path.join(PROJECT_ROOT, *parts) + ".py"
+
+        if os.path.isfile(pkg_init):
+            origin = pkg_init
+            is_pkg = True
+        elif os.path.isfile(mod_file):
+            origin = mod_file
+            is_pkg = False
+        else:
+            # Not one of your own modules—let other finders handle it
             return None
 
-        origin = os.path.abspath(spec.origin)
-        proj = os.path.abspath(PROJECT_ROOT)
-        # compute relative path from proj → origin
-        rel = os.path.relpath(origin, proj)
-        # if it walks up (starts with ".."), it's outside your project
-        if rel.startswith(os.pardir + os.sep) or rel == os.pardir:
-            return None
-
-        # Otherwise instrument it
+        # 2) Instrument it via our loader
         loader = VibeLoader(fullname, origin)
-        return importlib.util.spec_from_loader(fullname, loader, origin=origin)
+        spec = importlib.util.spec_from_loader(fullname, loader, origin=origin)
+        if is_pkg:
+            # ensure it's recognized as a package
+            spec.submodule_search_locations = [os.path.dirname(origin)]
+        return spec
 
 
 def run_script(script_path):
@@ -91,11 +93,8 @@ def run_script(script_path):
         sys.exit(1)
 
     PROJECT_ROOT = os.path.dirname(script_path)
-
-    # # ensure the folder above PROJECT_ROOT is importable
-    # parent = os.path.dirname(PROJECT_ROOT)
-    # if parent not in sys.path:
-    #     sys.path.insert(0, parent)
+    if PROJECT_ROOT not in sys.path:
+        sys.path.insert(0, PROJECT_ROOT)
 
     # install our finder first so all imports get rewritten
     sys.meta_path.insert(0, VibeFinder())
