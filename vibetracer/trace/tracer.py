@@ -4,6 +4,8 @@ import threading
 import traceback
 import json
 from functools import wraps
+
+import numpy as np
 from sqlmodel import Session, select
 
 from vibetracer.database.models import Function, Call, Argument
@@ -11,6 +13,16 @@ from vibetracer.database.sqlite_db import get_engine
 
 # Thread-local storage for nested call tracking
 _call_stack = threading.local()
+
+
+def normalize(obj):
+    if isinstance(obj, np.generic):
+        return obj.item()
+    if isinstance(obj, dict):
+        return {normalize(k): normalize(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return type(obj)(normalize(v) for v in obj)
+    return obj
 
 
 def info_decorator():
@@ -122,7 +134,7 @@ def info_decorator():
                     arg = Argument(
                         call_id=call_id,
                         name=name,
-                        value=json.dumps(val, default=str)
+                        value=json.dumps(normalize(val), default=str)
                     )
                     session.add(arg)
                 session.commit()
@@ -147,7 +159,7 @@ def info_decorator():
                 with Session(engine) as session:
                     db_call = session.get(Call, call_id)
                     db_call.duration_ms = elapsed
-                    db_call.return_value = json.dumps(result, default=str)
+                    db_call.return_value = json.dumps(normalize(result), default=str)
                     session.add(db_call)
                     session.commit()
                 _call_stack.stack.pop()
