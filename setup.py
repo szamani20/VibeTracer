@@ -24,7 +24,6 @@ setuptools.setup(
         "sqlmodel>=0.0.24",
         "SQLAlchemy>=2.0.41",
         "matplotlib>=3.10.3",
-        "matplotlib>=2.3.0",
         "networkx>=3.5",
         "openai>=1.93.0",
         "anthropic>=0.55.0",

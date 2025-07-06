@@ -1,4 +1,32 @@
-# pyproject.toml
 [build-system]
-requires = ["setuptools>=42", "wheel"]
+requires = ["setuptools>=42", "wheel", "setuptools_scm"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "vibetracer"
+version = "0.1.0"
+description = "Lightweight function‐call tracer with SQLite backend, built for vibe coders."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [
+  { name = "Soroush Zamani", email = "szchem20@gmail.com" },
+]
+dependencies = [
+  "sqlmodel>=0.0.24",
+  "SQLAlchemy>=2.0.41",
+  "matplotlib>=3.10.3",
+  "networkx>=3.5",
+  "openai>=1.93.0",
+  "anthropic>=0.55.0",
+  "google-genai>=1.23.0",
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+]
+urls = { "Homepage" = "https://github.com/szamani20/VibeTracer" }
+
+[project.scripts]
+vibetracer = "vibetracer.command.runner:main"
