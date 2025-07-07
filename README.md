@@ -4,8 +4,6 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/vibetracer.svg)](https://pypi.org/project/vibetracer)
 [![License](https://img.shields.io/pypi/l/vibetracer.svg)](./LICENSE)
 
-![VibeTracer](https://github.com/szamani20/VibeTracer/blob/main/vibetracer.png)
-
 > **VibeTracer is vibecoders’ best friend** – instrument, trace & *audit* your Python vibes **locally**, with
 > LLM‑powered insights.
 
@@ -117,6 +115,8 @@ Both contain five sections:
 Paste either report into your favourite chat‑GPT‑like tool to continue iterating – or just read it yourself.
 
 [Check out this sample report from a real project vibe traced using vibetracer.](./sample_audit_report.md)
+
+![VibeTracer](https://github.com/szamani20/VibeTracer/blob/main/vibetracer.png)
 
 ---
 
