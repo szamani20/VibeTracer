@@ -1,5 +1,11 @@
 # Audit Report
 
+- [1. Errors & Exceptions](#1-errors--exceptions)  
+- [2. Security Issues](#2-security-issues)  
+- [3. Performance Hotspots](#3-performance-hotspots)  
+- [4. Runtime Concerns](#4-runtime-concerns)  
+- [5. Architectural Notes](#5-architectural-notes)
+
 ## 1. Errors & Exceptions
 
 ### 1.1 Division‐by‐Zero in `normalize_data`
