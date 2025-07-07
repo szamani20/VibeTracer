@@ -4,6 +4,7 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/vibetracer.svg)](https://pypi.org/project/vibetracer)
 [![License](https://img.shields.io/pypi/l/vibetracer.svg)](./LICENSE)
 
+![VibeTracer](https://github.com/szamani20/VibeTracer/blob/main/vibetracer.png)
 
 > **VibeTracer is vibecoders’ best friend** – instrument, trace & *audit* your Python vibes **locally**, with
 > LLM‑powered insights.

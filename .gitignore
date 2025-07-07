@@ -15,5 +15,6 @@ __pycache__/
 *.png
 *.env
 
-# do not ignore requirements.txt
+# do not ignore
 !requirements.txt
+!vibetracer.png
