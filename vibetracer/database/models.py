@@ -33,7 +33,10 @@ class Call(SQLModel, table=True):
     is_coroutine: bool
     method_type: str
     class_name: Optional[str] = None
-    return_value: Optional[str] = None
+    return_value: Optional[str] = Field(
+        default=None,
+        sa_column=Column("return_value", String(1000))
+    )
     exception_type: Optional[str] = None
     exception_message: Optional[str] = None
     tb: Optional[str] = None
@@ -68,3 +71,15 @@ def _truncate_value_before_insert(mapper, connection, target):
 def _truncate_value_before_update(mapper, connection, target):
     if target.value and len(target.value) > 1000:
         target.value = target.value[:1000]
+
+
+@event.listens_for(Call, "before_insert")
+def _truncate_return_before_insert(mapper, connection, target):
+    if target.return_value and len(target.return_value) > 1000:
+        target.return_value = target.return_value[:1000]
+
+
+@event.listens_for(Call, "before_update")
+def _truncate_return_before_update(mapper, connection, target):
+    if target.return_value and len(target.return_value) > 1000:
+        target.return_value = target.return_value[:1000]
