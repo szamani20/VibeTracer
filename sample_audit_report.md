@@ -1,255 +1,225 @@
-# Market Analyzer Audit Report
+# Financial Analytics System Audit Report
 
 ## Table of Contents
-- [Errors & Exceptions](#errors--exceptions)
-- [Security Issues](#security-issues)
-- [Performance Hotspots](#performance-hotspots)
+- [Critical Security Vulnerabilities](#critical-security-vulnerabilities)
+- [Performance Issues](#performance-issues)
+- [Code Quality & Architecture](#code-quality--architecture)
 - [Runtime Concerns](#runtime-concerns)
-- [Architecture](#architecture)
 
-## Errors & Exceptions
+## Critical Security Vulnerabilities
 
-### 1. Cell Empty Error in Nested Function Definition
-**Issue**: `ValueError: Cell is empty` occurs when `data_structures_handler` tries to define the nested `process_nested` function.
-
-**Impact**: Prevents complete data structure analysis, causing the main execution to fail.
+### 1. Hardcoded API Credentials
+**Location**: `APIClient.__init__` (Function ID: 1)  
+**Risk**: High - Exposed sensitive credentials in source code
 
 **Current Implementation**:
 ```python
-def data_structures_handler(complex_data: Dict[str, Any]) -> Dict[str, Any]:
-    processed = {}
-    
-    def process_nested(obj, path=""):  # Error occurs here
-        # ... function body
+def __init__(self):
+    self.base_url = "https://api.marketprovider.com/v1"
+    self.api_key = "sk-flihasdFSDihfsd2432@#$23lfihdsafSDFASD24#@$"
+    self.session = requests.Session()
+    self.rate_limit_delay = 0.1
 ```
-
-**Suggested Fix**:
-```python
-def data_structures_handler(complex_data: Dict[str, Any]) -> Dict[str, Any]:
-    processed = {}
-    
-    # Move process_nested outside as a separate function or use a different approach
-    def _process_item(obj, path, processed_dict):
-        if isinstance(obj, dict):
-            for k, v in obj.items():
-                new_path = f"{path}.{k}" if path else k
-                _process_item(v, new_path, processed_dict)
-        elif isinstance(obj, list):
-            for i, item in enumerate(obj):
-                new_path = f"{path}[{i}]"
-                _process_item(item, new_path, processed_dict)
-        elif isinstance(obj, pd.DataFrame):
-            processed_dict[f"{path}_shape"] = obj.shape
-            processed_dict[f"{path}_columns"] = obj.columns.tolist()
-            processed_dict[f"{path}_dtypes"] = obj.dtypes.to_dict()
-            processed_dict[f"{path}_memory"] = obj.memory_usage().sum()
-        elif isinstance(obj, np.ndarray):
-            processed_dict[f"{path}_array_shape"] = obj.shape
-            processed_dict[f"{path}_array_mean"] = np.mean(obj)
-            processed_dict[f"{path}_array_std"] = np.std(obj)
-        else:
-            processed_dict[path] = obj
-    
-    _process_item(complex_data, "", processed)
-    return processed
-```
-
-## Security Issues
-
-### 1. Critical: eval() Usage on External Data
-**Location**: `APIClient.get_market_status()` (Line 89-93)
-
-**Current Implementation**:
-```python
-if response.status_code == 200 and response.text:
-    return eval(response.text)  # CRITICAL SECURITY VULNERABILITY
-```
-
-**Risk**: Remote code execution vulnerability - attackers can execute arbitrary Python code.
-
-**Suggested Fix**:
-```python
-import json
-
-if response.status_code == 200 and response.text:
-    try:
-        return json.loads(response.text)
-    except json.JSONDecodeError:
-        return {'status': 'error', 'message': 'Invalid response format'}
-```
-
-### 2. API Key Exposure
-**Issue**: API key stored in plain text configuration and passed around without protection.
 
 **Suggested Implementation**:
 ```python
 import os
-from cryptography.fernet import Fernet
+from dotenv import load_dotenv
 
-class SecureConfig:
-    def __init__(self):
-        self._cipher = Fernet(os.environ.get('ENCRYPTION_KEY', Fernet.generate_key()))
+def __init__(self):
+    load_dotenv()
+    self.base_url = os.getenv('API_BASE_URL', 'https://api.marketprovider.com/v1')
+    self.api_key = os.getenv('API_KEY')
+    if not self.api_key:
+        raise ValueError("API_KEY environment variable not set")
+    self.session = requests.Session()
+    self.rate_limit_delay = float(os.getenv('RATE_LIMIT_DELAY', '0.1'))
+```
+
+### 2. Code Injection via eval()
+**Location**: `APIClient.fetch_market_data` (Function ID: 3)  
+**Risk**: Critical - Remote code execution vulnerability
+
+**Current Implementation**:
+```python
+if 'filter' in data:
+    filter_expr = data['filter']
+    filtered_data = eval(f"[item for item in data['items'] if {filter_expr}]")
+    data['items'] = filtered_data
+```
+
+**Suggested Implementation**:
+```python
+import ast
+import operator
+
+def safe_filter(items, filter_expr):
+    # Parse filter expression safely
+    allowed_ops = {
+        ast.Eq: operator.eq,
+        ast.NotEq: operator.ne,
+        ast.Lt: operator.lt,
+        ast.LtE: operator.le,
+        ast.Gt: operator.gt,
+        ast.GtE: operator.ge,
+    }
     
-    def get_api_key(self):
-        encrypted_key = os.environ.get('ENCRYPTED_API_KEY')
-        if encrypted_key:
-            return self._cipher.decrypt(encrypted_key.encode()).decode()
-        return None
+    # Implement safe filtering logic
+    # Example: parse and validate filter_expr before applying
+    # Or use a predefined set of filter functions
+    return [item for item in items if validate_and_apply_filter(item, filter_expr)]
+
+if 'filter' in data:
+    filter_expr = data['filter']
+    filtered_data = safe_filter(data['items'], filter_expr)
+    data['items'] = filtered_data
 ```
 
-## Performance Hotspots
-
-### 1. Sequential API Calls
-**Issue**: 8 sequential API calls taking up to 5.4 seconds each.
+### 3. SQL Injection Vulnerability
+**Location**: `ReportFormatter.get_report` (Function ID: 44)  
+**Risk**: High - Database compromise possible
 
 **Current Implementation**:
 ```python
-for symbol in symbols:
-    cached_data = cache_manager.get_cached_data(symbol, start_date, end_date)
-    if cached_data:
-        all_stock_data.extend(cached_data)
-    else:
-        fetched_data = api_client.fetch_stock_data(symbol, start_date, end_date)
+query = f"SELECT * FROM reports WHERE id = {report_id}"
+cursor.execute(query)
 ```
 
-**Optimized Implementation**:
+**Suggested Implementation**:
 ```python
-import asyncio
-import aiohttp
-
-async def fetch_all_stocks(symbols, start_date, end_date):
-    async with aiohttp.ClientSession() as session:
-        tasks = []
-        for symbol in symbols:
-            if not cache_manager.has_cached_data(symbol, start_date, end_date):
-                tasks.append(fetch_stock_data_async(session, symbol, start_date, end_date))
-        
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        return [r for r in results if not isinstance(r, Exception)]
+query = "SELECT * FROM reports WHERE id = ?"
+cursor.execute(query, (report_id,))
 ```
 
-### 2. Nested Loop Complexity in Statistics
-**Location**: `calculate_statistics()` creates O(n²) nested loops
+## Performance Issues
+
+### 1. Inefficient Validation Loop
+**Location**: `DataValidator.validate_batch_data` (Function ID: 16)  
+**Impact**: Called 117 times, consuming ~3.9 seconds total
+
+**Optimization**:
+- Implement batch validation instead of item-by-item
+- Use vectorized operations with NumPy/Pandas
+- Cache validation results for repeated data
+
+### 2. Nested Loop in Moving Average Calculation
+**Location**: `DataProcessor.calculate_moving_averages` (Function ID: 20)  
+**Impact**: O(n²) complexity for simple moving average
 
 **Current Implementation**:
 ```python
-for i in range(len(returns)):
-    for j in range(i, len(returns)):
-        subset = returns[i:j + 1]
-        # ... calculations
+for window in windows:
+    for i in range(len(df)):
+        if i >= window - 1:
+            window_data = []
+            for j in range(i - window + 1, i + 1):
+                window_data.append(df.iloc[j]['close'])
+            result_df.loc[i, f'ma_{window}'] = sum(window_data) / len(window_data)
 ```
 
-**Optimized Implementation**:
+**Suggested Implementation**:
 ```python
-# Use vectorized operations or limit to meaningful windows
-window_sizes = [5, 10, 20, 50]  # Predefined windows instead of all combinations
-for window in window_sizes:
-    for i in range(0, len(returns) - window + 1, window // 2):  # Step by half window
-        subset = returns[i:i + window]
-        # ... calculations
+for window in windows:
+    result_df[f'ma_{window}'] = df['close'].rolling(window=window).mean()
+```
+
+### 3. Unnecessary Sleep in Visualizations
+**Location**: Multiple visualization functions (IDs: 54-57)  
+**Impact**: Adds 3.2 seconds of unnecessary delay
+
+**Current Implementation**:
+```python
+time.sleep(0.5)  # Simulate complex processing
+```
+
+**Suggested Implementation**:
+Remove all sleep statements - they serve no purpose in production code.
+
+## Code Quality & Architecture
+
+### 1. Poor Exception Handling
+**Location**: Multiple functions (e.g., Function IDs: 2, 9)  
+**Issue**: Bare except clauses swallow all errors
+
+**Current Pattern**:
+```python
+except:
+    all_data[symbol] = None
+```
+
+**Suggested Pattern**:
+```python
+except requests.exceptions.RequestException as e:
+    logger.error(f"Failed to fetch data for {symbol}: {e}")
+    all_data[symbol] = None
+except Exception as e:
+    logger.error(f"Unexpected error for {symbol}: {e}")
+    raise
+```
+
+### 2. Regex Pattern Issues
+**Location**: `DataValidator.__init__` (Function ID: 11)  
+**Issue**: Redundant quantifiers in regex patterns
+
+**Current Implementation**:
+```python
+self.symbol_pattern = re.compile(r'^([A-Z]+)+$')
+self.email_pattern = re.compile(r'^([a-zA-Z0-9]+)+@([a-zA-Z0-9]+\.)+[a-zA-Z]{2,}$')
+```
+
+**Suggested Implementation**:
+```python
+self.symbol_pattern = re.compile(r'^[A-Z]+$')
+self.email_pattern = re.compile(r'^[a-zA-Z0-9]+@[a-zA-Z0-9]+(?:\.[a-zA-Z0-9]+)*\.[a-zA-Z]{2,}$')
+```
+
+### 3. Inconsistent Error Handling
+**Location**: `ReportFormatter.save_report` (Function ID: 43)  
+**Issue**: Duplicate commit() calls
+
+**Current Implementation**:
+```python
+self.connection.commit()
+self.connection.commit()  # Duplicate
+return cursor.lastrowid
 ```
 
 ## Runtime Concerns
 
-### 1. Memory Inefficiency
-**Issue**: Excessive DataFrame copying without memory management
+### 1. Resource Leaks
+**Issue**: Database connections and file handles not properly closed
+**Solution**: Implement context managers for all resources
 
-**Current Patterns**:
 ```python
-df_copy = df.copy()  # Multiple unnecessary copies
+# Instead of:
+file = open(filepath, 'w', newline='')
+# Use:
+with open(filepath, 'w', newline='') as file:
+    # operations
 ```
 
-**Suggested Approach**:
-```python
-# Use views when possible, copy only when modifying
-df_view = df[['necessary', 'columns']]  # View, not copy
-# Or use inplace operations
-df['new_col'] = df['col'].transform(func)  # No copy needed
-```
+### 2. Memory Usage
+**Issue**: Large datasets loaded entirely into memory
+**Solution**: Implement streaming/chunking for large data processing
 
-### 2. Missing Rate Limiting
-**Issue**: `rate_limit_calls` counter exists but isn't used for actual limiting
+### 3. Missing Connection Pooling
+**Issue**: Creating new sessions for each API call
+**Solution**: Implement connection pooling for database and HTTP connections
 
-**Implementation**:
-```python
-from time import time, sleep
+## Recommendations
 
-class RateLimiter:
-    def __init__(self, calls_per_second=10):
-        self.calls_per_second = calls_per_second
-        self.calls = []
-    
-    def wait_if_needed(self):
-        now = time()
-        self.calls = [c for c in self.calls if now - c < 1.0]
-        if len(self.calls) >= self.calls_per_second:
-            sleep(1.0 - (now - self.calls[0]))
-        self.calls.append(now)
-```
+1. **Immediate Actions**:
+   - Remove hardcoded credentials
+   - Replace eval() with safe alternatives
+   - Fix SQL injection vulnerability
 
-## Architecture
+2. **Short-term Improvements**:
+   - Implement proper logging
+   - Add input validation
+   - Remove debug sleep statements
 
-### 1. Dependency Injection Missing
-**Issue**: Components create their own dependencies, making testing difficult
-
-**Current**:
-```python
-def main():
-    cache_manager = CacheManager()
-    api_client = APIClient(config)
-```
-
-**Suggested**:
-```python
-from typing import Protocol
-
-class DataFetcher(Protocol):
-    def fetch_stock_data(self, symbol: str, start: str, end: str) -> List[Dict]:
-        ...
-
-class MarketAnalyzer:
-    def __init__(self, data_fetcher: DataFetcher, cache_manager: CacheManager):
-        self.data_fetcher = data_fetcher
-        self.cache_manager = cache_manager
-```
-
-### 2. Error Handling Strategy
-**Issue**: Inconsistent error handling - some functions return empty lists, others return None
-
-**Recommendation**: Implement a consistent error handling strategy:
-```python
-from dataclasses import dataclass
-from typing import Optional, List, Union
-
-@dataclass
-class Result:
-    success: bool
-    data: Optional[Union[List, Dict, pd.DataFrame]] = None
-    error: Optional[str] = None
-
-# Usage
-def fetch_data() -> Result:
-    try:
-        data = perform_fetch()
-        return Result(success=True, data=data)
-    except Exception as e:
-        return Result(success=False, error=str(e))
-```
-
-### 3. Configuration Validation
-**Add validation to prevent runtime errors**:
-```python
-from pydantic import BaseModel, validator
-
-class APIConfig(BaseModel):
-    base_url: str
-    api_key: str
-    timeout: int = 30
-    retry_count: int = 3
-    
-    @validator('base_url')
-    def validate_url(cls, v):
-        if not v.startswith(('http://', 'https://')):
-            raise ValueError('Invalid URL format')
-        return v
-```
+3. **Long-term Refactoring**:
+   - Implement dependency injection
+   - Add comprehensive error handling
+   - Create proper data access layer
+   - Add unit and integration tests
