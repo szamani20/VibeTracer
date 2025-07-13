@@ -5,7 +5,7 @@ with open("README.md", encoding="utf-8") as f:
 
 setuptools.setup(
     name="vibetracer",
-    version="0.1.2",
+    version="0.1.3",
     author="Soroush Zamani",
     author_email="szchem20@gmail.com",
     description="Lightweight function‐call tracer with SQLite backend, built for vibe coders.",
