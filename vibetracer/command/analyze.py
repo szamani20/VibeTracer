@@ -64,12 +64,13 @@ def analyze_command(argv=None):
     os.environ[f"{provider}_api_key".upper()] = api_key
 
     # It's important to not import these before env var is set!
-    from vibetracer.llm.lib import dump_llm_report, analyze_my_code
+    from vibetracer.llm.lib import dump_llm_report
     report = dump_llm_report(str(db_path), latest=False, save=True)
     # print(report)
 
     report_only = args.report_only
     if not report_only:
+        from vibetracer.llm.lib import analyze_my_code
         audit_result = analyze_my_code(report)
         if audit_result.startswith('```markdown'):
             audit_result = audit_result[len('```markdown'):]
