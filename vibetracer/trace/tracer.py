@@ -15,15 +15,22 @@ from vibetracer.database.sqlite_db import get_engine
 _call_stack = threading.local()
 
 
+# To be decommissioned
 def normalize(obj):
     if isinstance(obj, np.generic):
         return obj.item()
     if isinstance(obj, dict):
         return {normalize(k): normalize(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
+    if isinstance(obj, (list, tuple, set)):
         return type(obj)(normalize(v) for v in obj)
     return obj
 
+def safe_serialize(x):
+    try:
+        # return json.dumps(normalize(x), default=str)
+        return json.dumps(x, default=str)
+    except:
+        return repr(x)
 
 def info_decorator():
     """
@@ -134,7 +141,7 @@ def info_decorator():
                     arg = Argument(
                         call_id=call_id,
                         name=name,
-                        value=json.dumps(normalize(val), default=str)
+                        value=safe_serialize(val)
                     )
                     session.add(arg)
                 session.commit()
@@ -159,7 +166,7 @@ def info_decorator():
                 with Session(engine) as session:
                     db_call = session.get(Call, call_id)
                     db_call.duration_ms = elapsed
-                    db_call.return_value = json.dumps(normalize(result), default=str)
+                    db_call.return_value = safe_serialize(result)
                     session.add(db_call)
                     session.commit()
                 _call_stack.stack.pop()
