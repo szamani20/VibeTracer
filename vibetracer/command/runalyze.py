@@ -30,6 +30,11 @@ def runalyze_command(argv=None):
         "script",
         help="Path to the Python entry-point script to trace"
     )
+    parser.add_argument(
+        "--report-only",
+        action="store_true",
+        help="Only generate the LLM report; skip any further analysis steps"
+    )
 
     args = parser.parse_args(argv)
     provider = args.provider
@@ -57,11 +62,14 @@ def runalyze_command(argv=None):
 
     from vibetracer.llm.lib import dump_llm_report, analyze_my_code
     report = dump_llm_report(str(db_path), latest=False, save=True)
-    audit_result = analyze_my_code(report)
-    if audit_result.startswith('```markdown'):
-        audit_result = audit_result[len('```markdown'):]
-    if audit_result.endswith('```'):
-        audit_result = audit_result[:-len('```')]
 
-    # TODO: Move save_markdown to dumper for consistency
-    save_markdown(audit_result, os.path.join(os.path.splitext(os.path.basename(db_path))[0], 'audit_results.md'))
+    report_only = args.report_only
+    if not report_only:
+        audit_result = analyze_my_code(report)
+        if audit_result.startswith('```markdown'):
+            audit_result = audit_result[len('```markdown'):]
+        if audit_result.endswith('```'):
+            audit_result = audit_result[:-len('```')]
+
+        # TODO: Move save_markdown to dumper for consistency
+        save_markdown(audit_result, os.path.join(os.path.splitext(os.path.basename(db_path))[0], 'audit_results.md'))
