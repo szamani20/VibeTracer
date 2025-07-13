@@ -1,5 +1,6 @@
 from typing import Optional, List
 from sqlmodel import SQLModel, Field, Relationship
+from sqlalchemy import Column, String, event
 
 
 class Function(SQLModel, table=True):
@@ -52,6 +53,18 @@ class Argument(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     call_id: int = Field(foreign_key="call.id")
     name: str
-    value: str
+    value: str = Field(sa_column=Column("value", String(1000)))
 
     call: "Call" = Relationship(back_populates="arguments")
+
+
+@event.listens_for(Argument, "before_insert")
+def _truncate_value_before_insert(mapper, connection, target):
+    if target.value and len(target.value) > 1000:
+        target.value = target.value[:1000]
+
+
+@event.listens_for(Argument, "before_update")
+def _truncate_value_before_update(mapper, connection, target):
+    if target.value and len(target.value) > 1000:
+        target.value = target.value[:1000]
