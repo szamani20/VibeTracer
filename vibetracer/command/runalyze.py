@@ -39,7 +39,9 @@ def runalyze_command(argv=None):
     args = parser.parse_args(argv)
     provider = args.provider
     api_key = args.api_key or os.getenv(f"{provider}_api_key")
-    if not api_key:
+    report_only = args.report_only
+
+    if not api_key and not report_only:
         parser.error(f"must provide --api_key or set {provider}_api_key in environment")
 
     # 1) Run the tracer (this writes into run_dbs/)
@@ -57,14 +59,14 @@ def runalyze_command(argv=None):
         parser.error(f"No run_*.db files found in {run_dbs}/")
     db_path = db_files[-1]
 
-    # 3) Perform LLM analysis
-    os.environ[f"{provider}_api_key".upper()] = api_key
 
     from vibetracer.llm.lib import dump_llm_report
     report = dump_llm_report(str(db_path), latest=False, save=True)
 
-    report_only = args.report_only
     if not report_only:
+        # 3) Perform LLM analysis
+        os.environ[f"{provider}_api_key".upper()] = api_key
+
         from vibetracer.llm.lib import analyze_my_code
         audit_result = analyze_my_code(report)
         if audit_result.startswith('```markdown'):

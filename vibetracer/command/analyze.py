@@ -37,7 +37,9 @@ def analyze_command(argv=None):
     args = parser.parse_args(argv)
     provider = args.provider
     api_key = args.api_key or os.getenv(f"{provider}_api_key")
-    if not api_key:
+    report_only = args.report_only
+
+    if not api_key and not report_only:
         parser.error(f"must provide --api_key or set {provider}_api_key in environment")
 
     p = Path(args.path)
@@ -60,16 +62,15 @@ def analyze_command(argv=None):
     else:
         parser.error(f"{p!r} is not a .db file or directory")
 
-    # ensure key is available for underlying LLM clients
-    os.environ[f"{provider}_api_key".upper()] = api_key
-
     # It's important to not import these before env var is set!
     from vibetracer.llm.lib import dump_llm_report
     report = dump_llm_report(str(db_path), latest=False, save=True)
     # print(report)
 
-    report_only = args.report_only
     if not report_only:
+        # ensure key is available for underlying LLM clients
+        os.environ[f"{provider}_api_key".upper()] = api_key
+
         from vibetracer.llm.lib import analyze_my_code
         audit_result = analyze_my_code(report)
         if audit_result.startswith('```markdown'):
