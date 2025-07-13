@@ -18,9 +18,12 @@ Please produce a concise, structured audit in raw markdown format:
 Return your findings in human-friendly raw markdown format. Your report may (but does not have to if not applicable)
 contain the following sections:
 `errors`, `security`, `performance`, `runtime`, `architecture`
-You may add new or remove existing sections as you see fit given the report. The goal is to help the devs not to spam
-them with unnecessary information. Ignore @info_decorator related issues. Do not report anything about
-the @info_decorator as an issue as this decorator is used to generate the report.
+You may add new or remove existing sections as you see fit given the report. Include a short table of content at the
+beginning of your report that lists the sections (including any new section that you may add in additional to the five
+sections outlined before.)
+The goal is to help the devs not to spam them with unnecessary information.
+Ignore @info_decorator related issues as this is an internal decorator to help audit the code.
+Do not report anything about the @info_decorator as an issue as this decorator is used to generate the report.
 For each chosen section, provide as much detail as possible without being overly verbose following a concise and
 human-friendly format.
 Include details about your identified issue, why it's important, its potential impact, the current implementation,
