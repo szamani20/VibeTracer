@@ -1,198 +1,255 @@
-# Audit Report
+# Market Analyzer Audit Report
 
-- [1. Errors & Exceptions](#1-errors--exceptions)  
-- [2. Security Issues](#2-security-issues)  
-- [3. Performance Hotspots](#3-performance-hotspots)  
-- [4. Runtime Concerns](#4-runtime-concerns)  
-- [5. Architectural Notes](#5-architectural-notes)
+## Table of Contents
+- [Errors & Exceptions](#errors--exceptions)
+- [Security Issues](#security-issues)
+- [Performance Hotspots](#performance-hotspots)
+- [Runtime Concerns](#runtime-concerns)
+- [Architecture](#architecture)
 
-## 1. Errors & Exceptions
+## Errors & Exceptions
 
-### 1.1 Division‐by‐Zero in `normalize_data`
-**Issue:**  
-When all centrality values are equal, `(max–min)==0` causes a division by zero, yielding NaN in `norm_cent`.
+### 1. Cell Empty Error in Nested Function Definition
+**Issue**: `ValueError: Cell is empty` occurs when `data_structures_handler` tries to define the nested `process_nested` function.
 
-**Current Implementation (utils/graph/metrics.py):**  
+**Impact**: Prevents complete data structure analysis, causing the main execution to fail.
+
+**Current Implementation**:
 ```python
-df['norm_cent'] = (df['centrality'] - df['centrality'].min()) \
-                  / (df['centrality'].max() - df['centrality'].min())
+def data_structures_handler(complex_data: Dict[str, Any]) -> Dict[str, Any]:
+    processed = {}
+    
+    def process_nested(obj, path=""):  # Error occurs here
+        # ... function body
 ```
 
-**Suggested Fix:**  
-Check denominator and default to zero (or 1) when constant:
+**Suggested Fix**:
 ```python
-den = df['centrality'].max() - df['centrality'].min()
-if den == 0:
-    df['norm_cent'] = 0.0
-else:
-    df['norm_cent'] = (df['centrality'] - df['centrality'].min()) / den
+def data_structures_handler(complex_data: Dict[str, Any]) -> Dict[str, Any]:
+    processed = {}
+    
+    # Move process_nested outside as a separate function or use a different approach
+    def _process_item(obj, path, processed_dict):
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                new_path = f"{path}.{k}" if path else k
+                _process_item(v, new_path, processed_dict)
+        elif isinstance(obj, list):
+            for i, item in enumerate(obj):
+                new_path = f"{path}[{i}]"
+                _process_item(item, new_path, processed_dict)
+        elif isinstance(obj, pd.DataFrame):
+            processed_dict[f"{path}_shape"] = obj.shape
+            processed_dict[f"{path}_columns"] = obj.columns.tolist()
+            processed_dict[f"{path}_dtypes"] = obj.dtypes.to_dict()
+            processed_dict[f"{path}_memory"] = obj.memory_usage().sum()
+        elif isinstance(obj, np.ndarray):
+            processed_dict[f"{path}_array_shape"] = obj.shape
+            processed_dict[f"{path}_array_mean"] = np.mean(obj)
+            processed_dict[f"{path}_array_std"] = np.std(obj)
+        else:
+            processed_dict[path] = obj
+    
+    _process_item(complex_data, "", processed)
+    return processed
 ```
 
-### 1.2 Unsafe Commented‐Out Code in `from_nested_json`
-**Issue:**  
-A commented `# return eval(json_str)` is dangerous if accidentally re-enabled.
+## Security Issues
 
-**Recommendation:**  
-Remove commented `eval` line entirely to prevent future misuse.
+### 1. Critical: eval() Usage on External Data
+**Location**: `APIClient.get_market_status()` (Line 89-93)
 
-
----
-
-## 2. Security Issues
-
-### 2.1 SSL Verification Disabled
-**Impact:** Man-in-the-middle attacks, data leak, impersonation.  
-**Current (`data/loader.py`):**  
+**Current Implementation**:
 ```python
-response = requests.get(self.url,
-                        headers={"Authorization": self.api_key},
-                        verify=False)
-```
-**Suggested:**  
-```python
-# enable verification by default
-response = requests.get(self.url,
-                        headers={"Authorization": self.api_key},
-                        verify=True)
-# or make verify configurable via ENV/setting
+if response.status_code == 200 and response.text:
+    return eval(response.text)  # CRITICAL SECURITY VULNERABILITY
 ```
 
-### 2.2 Arbitrary Code Execution via `eval_exp`
-**Impact:** Remote code execution if user‐controlled input reaches `eval`.  
-**Current (`utils/helpers.py`):**  
-```python
-def eval_exp(self, expression):
-    return eval(expression)
-```
-**Suggested:**  
-Use safe parsing or `ast.literal_eval` if only literals/tuples/dicts are needed:
-```python
-import ast
+**Risk**: Remote code execution vulnerability - attackers can execute arbitrary Python code.
 
-def eval_exp(self, expression):
-    return ast.literal_eval(expression)
+**Suggested Fix**:
+```python
+import json
+
+if response.status_code == 200 and response.text:
+    try:
+        return json.loads(response.text)
+    except json.JSONDecodeError:
+        return {'status': 'error', 'message': 'Invalid response format'}
 ```
 
-### 2.3 Weak “Encryption” in `encrypt`/`decrypt`
-**Impact:** Base64 + string concatenation is reversible; key is exposed.  
-**Current (`utils/security.py`):**  
+### 2. API Key Exposure
+**Issue**: API key stored in plain text configuration and passed around without protection.
+
+**Suggested Implementation**:
 ```python
-def encrypt(data, key):
-    token = base64.b64encode(data.encode()).decode()
-    return token + key
-```
-**Suggested:**  
-Use a vetted library (e.g. cryptography’s Fernet) and manage keys securely:
-```python
+import os
 from cryptography.fernet import Fernet
 
-# generate & store key securely
-cipher = Fernet(secret_key)
-def encrypt(data):
-    return cipher.encrypt(data.encode()).decode()
+class SecureConfig:
+    def __init__(self):
+        self._cipher = Fernet(os.environ.get('ENCRYPTION_KEY', Fernet.generate_key()))
+    
+    def get_api_key(self):
+        encrypted_key = os.environ.get('ENCRYPTED_API_KEY')
+        if encrypted_key:
+            return self._cipher.decrypt(encrypted_key.encode()).decode()
+        return None
 ```
 
-### 2.4 Partial Filename Sanitization in `Exporter.export`
-**Impact:** Filename may include path‐traversal or special chars.  
-**Current (`output/exporter.py`):**  
+## Performance Hotspots
+
+### 1. Sequential API Calls
+**Issue**: 8 sequential API calls taking up to 5.4 seconds each.
+
+**Current Implementation**:
 ```python
-safe_name = filename.replace(' ', '_')
-f = open(safe_name[:20] + '.csv', 'w')
+for symbol in symbols:
+    cached_data = cache_manager.get_cached_data(symbol, start_date, end_date)
+    if cached_data:
+        all_stock_data.extend(cached_data)
+    else:
+        fetched_data = api_client.fetch_stock_data(symbol, start_date, end_date)
 ```
-**Suggested:**  
-Use `pathlib` and whitelist characters:
+
+**Optimized Implementation**:
 ```python
-from pathlib import Path
-import re
+import asyncio
+import aiohttp
 
-base = re.sub(r'[^A-Za-z0-9_\-]', '_', filename)[:20]
-path = Path.cwd() / f"{base}.csv"
-with path.open('w', newline='') as f:
-    ...
+async def fetch_all_stocks(symbols, start_date, end_date):
+    async with aiohttp.ClientSession() as session:
+        tasks = []
+        for symbol in symbols:
+            if not cache_manager.has_cached_data(symbol, start_date, end_date):
+                tasks.append(fetch_stock_data_async(session, symbol, start_date, end_date))
+        
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        return [r for r in results if not isinstance(r, Exception)]
 ```
 
----
+### 2. Nested Loop Complexity in Statistics
+**Location**: `calculate_statistics()` creates O(n²) nested loops
 
-## 3. Performance Hotspots
-
-### 3.1 Row-by-Row Loop in `DataTransformer.transform`
-**Issue:** Python loop over rows is slow for large datasets.  
-**Current (`processing/transformer.py`):**  
+**Current Implementation**:
 ```python
-word_counts = []
-for i in range(len(df)):
-    word_counts.append(len(df['body'][i].split(' ')))
-df['word_count'] = word_counts
+for i in range(len(returns)):
+    for j in range(i, len(returns)):
+        subset = returns[i:j + 1]
+        # ... calculations
 ```
-**Suggested (vectorized pandas):**  
+
+**Optimized Implementation**:
 ```python
-df['word_count'] = df['body'].str.split().str.len()
+# Use vectorized operations or limit to meaningful windows
+window_sizes = [5, 10, 20, 50]  # Predefined windows instead of all combinations
+for window in window_sizes:
+    for i in range(0, len(returns) - window + 1, window // 2):  # Step by half window
+        subset = returns[i:i + window]
+        # ... calculations
 ```
 
-### 3.2 Quadratic Graph Construction
-**Issue:** Nested loops over users → O(n²) edge construction.  
-**Current (`graph/graph.py`):**  
+## Runtime Concerns
+
+### 1. Memory Inefficiency
+**Issue**: Excessive DataFrame copying without memory management
+
+**Current Patterns**:
 ```python
-for u in users:
-    for v in users:
-        if u != v:
-            G.add_edge(u, v, weight=...)
+df_copy = df.copy()  # Multiple unnecessary copies
 ```
-**Suggested (use combinations):**  
+
+**Suggested Approach**:
 ```python
-from itertools import combinations
-for u, v in combinations(users, 2):
-    diff = abs(results[u] - results[v])
-    G.add_edge(u, v, weight=diff)
+# Use views when possible, copy only when modifying
+df_view = df[['necessary', 'columns']]  # View, not copy
+# Or use inplace operations
+df['new_col'] = df['col'].transform(func)  # No copy needed
 ```
 
-### 3.3 Repeated File Open/Close in Logging
-**Issue:** Each `log()` call opens/appends/closes `app.log`, incurring I/O.  
-**Current (`output/logger.py`):**  
+### 2. Missing Rate Limiting
+**Issue**: `rate_limit_calls` counter exists but isn't used for actual limiting
+
+**Implementation**:
 ```python
-with open('app.log', 'a') as f:
-    f.write(message + '\n')
-self.logger.debug(message)
+from time import time, sleep
+
+class RateLimiter:
+    def __init__(self, calls_per_second=10):
+        self.calls_per_second = calls_per_second
+        self.calls = []
+    
+    def wait_if_needed(self):
+        now = time()
+        self.calls = [c for c in self.calls if now - c < 1.0]
+        if len(self.calls) >= self.calls_per_second:
+            sleep(1.0 - (now - self.calls[0]))
+        self.calls.append(now)
 ```
-**Suggested:**  
-Configure a single rotating `logging.FileHandler`:
+
+## Architecture
+
+### 1. Dependency Injection Missing
+**Issue**: Components create their own dependencies, making testing difficult
+
+**Current**:
 ```python
-import logging
-handler = logging.handlers.RotatingFileHandler('app.log', maxBytes=1e6, backupCount=3)
-logger.addHandler(handler)
-# then simply logger.debug(msg)
+def main():
+    cache_manager = CacheManager()
+    api_client = APIClient(config)
 ```
 
----
+**Suggested**:
+```python
+from typing import Protocol
 
-## 4. Runtime Concerns
+class DataFetcher(Protocol):
+    def fetch_stock_data(self, symbol: str, start: str, end: str) -> List[Dict]:
+        ...
 
-- **`verify=False`** suppresses SSL checks—see Security above.  
-- **Full JSON in Memory:** For large responses, consider streaming or paging.  
-- **Normalization NaNs:** Upstream consumers of `norm_cent` must handle NaN.  
-- **Log Growth:** Without rotation, `app.log` may grow unbounded.
+class MarketAnalyzer:
+    def __init__(self, data_fetcher: DataFetcher, cache_manager: CacheManager):
+        self.data_fetcher = data_fetcher
+        self.cache_manager = cache_manager
+```
 
----
+### 2. Error Handling Strategy
+**Issue**: Inconsistent error handling - some functions return empty lists, others return None
 
-## 5. Architectural Notes
+**Recommendation**: Implement a consistent error handling strategy:
+```python
+from dataclasses import dataclass
+from typing import Optional, List, Union
 
-- **Configuration Management:**  
-  - Move `API_URL`/`API_KEY` into environment variables or a secure vault rather than plain `settings.py`.
+@dataclass
+class Result:
+    success: bool
+    data: Optional[Union[List, Dict, pd.DataFrame]] = None
+    error: Optional[str] = None
 
-- **Crypto Isolation:**  
-  - Centralize encryption/decryption in one well-tested module using standard libraries. Remove home-grown schemes.
+# Usage
+def fetch_data() -> Result:
+    try:
+        data = perform_fetch()
+        return Result(success=True, data=data)
+    except Exception as e:
+        return Result(success=False, error=str(e))
+```
 
-- **Helper Classes vs. Modules:**  
-  - Math utilities could be module‐level functions; avoid instantiating classes with only static behavior.
+### 3. Configuration Validation
+**Add validation to prevent runtime errors**:
+```python
+from pydantic import BaseModel, validator
 
-- **Error Handling:**  
-  - Add retries/timeouts to HTTP calls.  
-  - Validate JSON shape before processing.
-
-- **Dependency Hygiene:**  
-  - Pin versions for `requests`, `pandas`, `networkx`, `cryptography` to avoid breaking changes.  
-  - Audit `verify=False` deprecation warnings (requests 2.x).
-
----
-
-*End of Report*
+class APIConfig(BaseModel):
+    base_url: str
+    api_key: str
+    timeout: int = 30
+    retry_count: int = 3
+    
+    @validator('base_url')
+    def validate_url(cls, v):
+        if not v.startswith(('http://', 'https://')):
+            raise ValueError('Invalid URL format')
+        return v
+```
