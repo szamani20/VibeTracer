@@ -14,7 +14,7 @@ def get_engine():
     Returns:
         engine: SQLAlchemy engine connected to the new SQLite database.
     """
-    db_directory = os.path.join(os.environ.get('CWD', './'), DB_DIRECTORY)
+    db_directory = os.path.join(os.environ.get('VibeTracer_CWD', './'), DB_DIRECTORY)
     os.makedirs(db_directory, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     db_path = f"{db_directory}/run_{timestamp}.db"

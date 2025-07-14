@@ -12,7 +12,7 @@ def main():
         sys.exit(1)
 
     cwd = os.getcwd()
-    os.environ['CWD'] = cwd
+    os.environ['VibeTracer_CWD'] = cwd
 
     cmd, *rest = sys.argv[1:]
     if cmd == "run":
