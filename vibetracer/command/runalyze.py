@@ -69,9 +69,9 @@ def runalyze_command(argv=None):
 
         from vibetracer.llm.lib import analyze_my_code
         audit_result = analyze_my_code(report)
-        if audit_result.startswith('```markdown'):
+        if lang_specifier := audit_result.startswith('```markdown'):
             audit_result = audit_result[len('```markdown'):]
-        if audit_result.endswith('```'):
+        if lang_specifier and audit_result.endswith('```'):
             audit_result = audit_result[:-len('```')]
 
         # TODO: Move save_markdown to dumper for consistency
