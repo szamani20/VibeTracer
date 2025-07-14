@@ -196,8 +196,8 @@ def run_script(script_path):
     sys.modules['__main__'] = module
 
     cwd = os.getcwd()
-    os.environ['CWD'] = cwd
     # Change CWD to PROJECT_ROOT to avoid messing with relative paths used in project code
     os.chdir(PROJECT_ROOT)
     loader.exec_module(module)
+    # Change CWD back to what it was to be able to access the sqlite db if needed
     os.chdir(cwd)

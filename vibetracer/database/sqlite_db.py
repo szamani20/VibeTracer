@@ -14,9 +14,10 @@ def get_engine():
     Returns:
         engine: SQLAlchemy engine connected to the new SQLite database.
     """
-    os.makedirs(DB_DIRECTORY, exist_ok=True)
+    db_directory = os.path.join(os.environ.get('CWD', './'), DB_DIRECTORY)
+    os.makedirs(db_directory, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    db_path = f"{DB_DIRECTORY}/run_{timestamp}.db"
+    db_path = f"{db_directory}/run_{timestamp}.db"
     engine = create_engine(f"sqlite:///{db_path}")
     SQLModel.metadata.create_all(engine)
     return engine

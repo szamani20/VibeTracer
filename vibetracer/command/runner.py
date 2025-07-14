@@ -1,3 +1,4 @@
+import os
 import sys
 
 from vibetracer.command.run import run_script
@@ -9,6 +10,9 @@ def main():
     if len(sys.argv) < 2:
         print("Usage: vibetracer <run|analyze|runalyze> [options]", file=sys.stderr)
         sys.exit(1)
+
+    cwd = os.getcwd()
+    os.environ['CWD'] = cwd
 
     cmd, *rest = sys.argv[1:]
     if cmd == "run":
